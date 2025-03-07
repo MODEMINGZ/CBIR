@@ -3,12 +3,14 @@ import sys
 import os
 import numpy as np
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, QEvent
 from PyQt5.QtGui import QPixmap
 from feature_extractor import FeatureExtractor
 from retrieval_engine import RetrievalEngine
 from metrics import MetricCalculator
 from config import config
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 # ======================== 多线程检索类 ========================
@@ -142,6 +144,10 @@ class ImageRetrievalUI(QMainWindow):
 
         # 性能指标
         self.current_query = QLabel("---")
+        self.current_query.setWordWrap(True)  # 允许换行
+        self.current_query.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.current_query.width = 100
+
         self.recall = QLabel("---")
         self.precision = QLabel("---")
         self.response_time = QLabel("---")
@@ -149,9 +155,9 @@ class ImageRetrievalUI(QMainWindow):
         self.total_relevant = QLabel("---")
 
         metrics = [
-            ("召回率", self.recall),
-            ("当前结果精确率", self.precision),
-            ("mAP", self.map),
+            ("当前召回率", self.recall),
+            ("当前精确率", self.precision),
+            ("当前mAP", self.map),
             ("响应时间(ms)", self.response_time),
         ]
 
@@ -222,9 +228,9 @@ class ImageRetrievalUI(QMainWindow):
         text += f"算法类型: {self.feature_algo.currentText()}\n"
         text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n"
         text += f"总相关图片: {self.metric_calculator.total_relevant}\n"
-        text += f"召回率: {self.recall.text()}（相关结果/{self.metric_calculator.total_relevant})\n"
-        text += f"当前结果精确率: {self.precision.text()}（相关结果/{self.result_num.value()})\n"
-        text += f"mAP: {self.map.text()}\n"
+        text += f"当前召回率: {self.recall.text()}（相关结果/{self.metric_calculator.total_relevant})\n"
+        text += f"当前精确率: {self.precision.text()}（相关结果/{self.result_num.value()})\n"
+        text += f"当前mAP: {self.map.text()}\n"
         text += f"响应时间: {self.response_time.text()}"
 
         clipboard = QApplication.clipboard()

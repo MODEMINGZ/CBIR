@@ -44,8 +44,20 @@ class MetricCalculator:
         precision = relevant / len(results) if len(results) > 0 else 0
         ap = sum(precision_at_k) / total_relevant if total_relevant > 0 else 0
         self.total_relevant = total_relevant
-        # 修正
+
+        # 收集每个位置的精确率和召回率
+        pr_data = []
+        relevant = 0
+        for k, path in enumerate(results, 1):
+            result_class = self._get_class_from_path(path)
+            if result_class == query_class:
+                relevant += 1
+            precision_k = relevant / k
+            recall_k = relevant / total_relevant if total_relevant > 0 else 0
+            pr_data.append((recall_k, precision_k))
+
         return {
+            "pr_data": pr_data,
             "recall": float(round(recall, 4)),
             "precision": float(round(precision, 4)),
             "mAP": float(round(ap, 4)),

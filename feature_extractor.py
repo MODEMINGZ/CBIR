@@ -43,7 +43,7 @@ class FeatureExtractor:
         if des is None:
             return None
 
-        # 取特征向量的均值（或改用其他聚合方式）
+        # 取特征向量的均值
         return np.mean(des, axis=0)
 
     def extract_dataset(self, root_dir, save_path=None):
