@@ -135,8 +135,8 @@ class ImageRetrievalUI(QMainWindow):
         mid_panel.setWidget(mid_content)
 
         # 右侧性能面板
-        right_panel = QScrollArea()
-        right_panel.setWidgetResizable(True)
+        self.right_panel = QScrollArea()
+        self.right_panel.setWidgetResizable(True)
         right_content = QWidget()
         right_layout = QFormLayout(right_content)
         right_layout.setVerticalSpacing(15)
@@ -170,12 +170,12 @@ class ImageRetrievalUI(QMainWindow):
         self.copy_btn = QPushButton("复制性能数据")
         right_layout.addRow(self.copy_btn)
 
-        right_panel.setWidget(right_content)
+        self.right_panel.setWidget(right_content)
 
         # 添加主布局
         main_layout.addWidget(left_panel)
         main_layout.addWidget(mid_panel, stretch=3)
-        main_layout.addWidget(right_panel, stretch=1)
+        main_layout.addWidget(self.right_panel, stretch=1)
 
         # 设置样式
         self.setStyleSheet(
