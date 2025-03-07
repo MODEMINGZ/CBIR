@@ -30,6 +30,9 @@ class FeatureExtractor:
         return paths
 
     def extract_single(self, img_path):
+        # 标准化输入路径
+        img_path = os.path.normpath(os.path.abspath(img_path)).lower()
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         """提取单张图片特征"""
         img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         if img is None:

@@ -1,4 +1,3 @@
-# precompute_features.py
 from feature_extractor import FeatureExtractor
 from config import config
 import os

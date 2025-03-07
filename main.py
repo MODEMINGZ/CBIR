@@ -149,10 +149,10 @@ class ImageRetrievalUI(QMainWindow):
         self.total_relevant = QLabel("---")
 
         metrics = [
-            ("召回率 (Recall)", self.recall),
-            ("精确率 (Precision)", self.precision),
+            ("召回率", self.recall),
+            ("当前结果精确率", self.precision),
             ("mAP", self.map),
-            ("响应时间 (ms)", self.response_time),
+            ("响应时间(ms)", self.response_time),
         ]
 
         right_layout.addRow("当前算法:", self.current_algorithm)
@@ -206,7 +206,7 @@ class ImageRetrievalUI(QMainWindow):
             self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
 
             # 初始化性能计算器
-            self.metric_calculator = MetricCalculator(config.TEST_ROOT)
+            self.metric_calculator = MetricCalculator(config.DATASET_ROOT)
         except FileNotFoundError:
             QMessageBox.critical(
                 self,
@@ -223,9 +223,7 @@ class ImageRetrievalUI(QMainWindow):
         text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n"
         text += f"总相关图片: {self.metric_calculator.total_relevant}\n"
         text += f"召回率: {self.recall.text()}（相关结果/{self.metric_calculator.total_relevant})\n"
-        text += (
-            f"精确率: {self.precision.text()}（相关结果/{self.result_num.value()})\n"
-        )
+        text += f"当前结果精确率: {self.precision.text()}（相关结果/{self.result_num.value()})\n"
         text += f"mAP: {self.map.text()}\n"
         text += f"响应时间: {self.response_time.text()}"
 
@@ -271,6 +269,7 @@ class ImageRetrievalUI(QMainWindow):
         if not file_path:
             return
 
+        self.current_image_path = os.path.normpath(os.path.abspath(file_path)).lower()
         # 显示预览
         self.current_image_path = file_path
         pixmap = QPixmap(file_path)
@@ -328,9 +327,7 @@ class ImageRetrievalUI(QMainWindow):
         self.update_metrics(metrics, search_time)
         # 显示基础统计信息
         self.current_query.setText(os.path.basename(self.current_image_path))
-        self.total_relevant.setText(
-            f"相关图片总数: {self.metric_calculator.total_relevant}"
-        )
+        self.total_relevant.setText(f" {self.metric_calculator.total_relevant}")
 
     # ----------------- 界面更新方法 -----------------
     def display_results(self, result_paths, similarities):
