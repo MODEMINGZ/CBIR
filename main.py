@@ -13,6 +13,66 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 
+class PRCanvas(FigureCanvas):
+    """PR曲线绘图组件"""
+
+    def __init__(self, parent=None):
+        self.fig = Figure(figsize=(5, 4), dpi=80)
+        super().__init__(self.fig)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_xlabel("Recall")
+        self.ax.set_ylabel("Precision")
+        self.ax.set_title("PR Curve")
+        self.ax.set_xlim(0, 1)
+        self.ax.set_ylim(0, 1)
+        self.ax.grid(True, linestyle="--", alpha=0.7)
+
+    def update_plot(self, pr_data, interpolated_pr_data=None):
+        """根据数据更新曲线
+
+        Args:
+            pr_data: 原始PR数据点列表 [(recall, precision),...]
+            interpolated_pr_data: 11点插值后的PR数据 [(recall, precision),...]
+        """
+        self.ax.clear()
+        if len(pr_data) == 0:
+            return
+
+        # 绘制原始PR曲线
+        recalls, precisions = zip(*pr_data)
+        self.ax.plot(
+            recalls,
+            precisions,
+            "b-",
+            marker="o",
+            markersize=3,
+            label="Original PR Curve",
+            alpha=0.6,
+        )
+
+        # 绘制插值PR曲线
+        if interpolated_pr_data and len(interpolated_pr_data) > 0:
+            int_recalls, int_precisions = zip(*interpolated_pr_data)
+            self.ax.plot(
+                int_recalls,
+                int_precisions,
+                "r--",
+                marker="s",
+                markersize=4,
+                label="11-point Interpolation",
+            )
+
+        self.ax.set_xlabel("Recall")
+        self.ax.set_ylabel("Precision")
+        self.ax.set_title("PR Curve")
+        self.ax.set_xlim(0, 1)
+        self.ax.set_ylim(0, 1)
+        self.ax.grid(True, linestyle="--", alpha=0.7)
+        self.ax.legend()
+        self.fig.tight_layout()
+        self.draw()
+
+
 # ======================== 多线程检索类 ========================
 class SearchThread(QThread):
     search_finished = pyqtSignal(
@@ -134,42 +194,58 @@ class ImageRetrievalUI(QMainWindow):
         self.mid_layout.setAlignment(Qt.AlignTop)
         mid_panel.setWidget(mid_content)
 
-        # 右侧性能面板
+        # ================= 右侧面板 =================
         self.right_panel = QScrollArea()
         self.right_panel.setWidgetResizable(True)
+        self.right_panel.setMinimumWidth(320)  # 固定最小宽度
+
+        # 主容器
         right_content = QWidget()
-        right_layout = QFormLayout(right_content)
-        right_layout.setVerticalSpacing(15)
+        right_content_layout = QVBoxLayout(right_content)
+        right_content_layout.setContentsMargins(5, 5, 5, 5)
+
+        # ----------------- 性能指标分组 -----------------
+        self.performance_group = QGroupBox("性能指标")
+        perf_layout = QFormLayout()
+        perf_layout.setVerticalSpacing(10)
+
+        # 算法和查询信息
         self.current_algorithm = QLabel("SIFT")
-
-        # 性能指标
         self.current_query = QLabel("---")
-        self.current_query.setWordWrap(True)  # 允许换行
-        self.current_query.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.current_query.width = 100
-
-        self.recall = QLabel("---")
-        self.precision = QLabel("---")
-        self.response_time = QLabel("---")
-        self.map = QLabel("---")
+        self.current_query.setWordWrap(True)
         self.total_relevant = QLabel("---")
 
-        metrics = [
-            ("当前召回率", self.recall),
-            ("当前精确率", self.precision),
-            ("当前mAP", self.map),
-            ("响应时间(ms)", self.response_time),
-        ]
+        # 核心指标
+        self.recall = QLabel("---")
+        self.precision = QLabel("---")
+        self.map = QLabel("---")
+        self.response_time = QLabel("---")
 
-        right_layout.addRow("当前算法:", self.current_algorithm)
-        right_layout.addRow("查询图片:", self.current_query)
-        right_layout.addRow("总相关图片:", self.total_relevant)
-        for metric in metrics:
-            right_layout.addRow(metric[0], metric[1])
+        # 添加到布局
+        perf_layout.addRow("当前算法:", self.current_algorithm)
+        perf_layout.addRow("查询图片:", self.current_query)
+        perf_layout.addRow("总相关数:", self.total_relevant)
+        perf_layout.addRow(QLabel(""))  # 空行分隔
+        perf_layout.addRow("召回率:", self.recall)
+        perf_layout.addRow("精确率:", self.precision)
+        perf_layout.addRow("mAP:", self.map)
+        perf_layout.addRow("响应时间:", self.response_time)
+        self.performance_group.setLayout(perf_layout)
 
+        # ----------------- PR曲线区域 -----------------
+        self.pr_canvas = PRCanvas()  # 使用之前定义的PR曲线组件
+
+        # ----------------- 操作按钮 -----------------
         self.copy_btn = QPushButton("复制性能数据")
-        right_layout.addRow(self.copy_btn)
+        self.copy_btn.setFixedHeight(30)
 
+        # 整合所有组件
+        right_content_layout.addWidget(self.performance_group)
+        right_content_layout.addWidget(self.pr_canvas)
+        right_content_layout.addWidget(self.copy_btn)
+        right_content_layout.addStretch()  # 底部留空
+
+        # 设置滚动区域内容
         self.right_panel.setWidget(right_content)
 
         # 添加主布局
@@ -228,9 +304,9 @@ class ImageRetrievalUI(QMainWindow):
         text += f"算法类型: {self.feature_algo.currentText()}\n"
         text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n"
         text += f"总相关图片: {self.metric_calculator.total_relevant}\n"
-        text += f"当前召回率: {self.recall.text()}（相关结果/{self.metric_calculator.total_relevant})\n"
-        text += f"当前精确率: {self.precision.text()}（相关结果/{self.result_num.value()})\n"
-        text += f"当前mAP: {self.map.text()}\n"
+        text += f"当前召回率: {self.recall.text()}\n"
+        text += f"当前精确率: {self.precision.text()}\n"
+        text += f"当前mAP@10: {self.map.text()}\n"
         text += f"响应时间: {self.response_time.text()}"
 
         clipboard = QApplication.clipboard()
@@ -378,6 +454,7 @@ class ImageRetrievalUI(QMainWindow):
         self.precision.setText(f"{metrics['precision']*100:.1f}%")
         self.map.setText(f"{metrics['mAP']:.3f}")
         self.response_time.setText(f"{metrics['response_time']} ms")
+        self.pr_canvas.update_plot(metrics.get("pr_data", []))
 
 
 # ======================== 启动程序 ========================

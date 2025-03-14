@@ -8,7 +8,7 @@ def main():
     os.makedirs("features", exist_ok=True)
 
     # 支持的所有算法列表
-    algorithms = ["SIFT", "ORB"]  # 移除SURF改用ORB
+    algorithms = ["SIFT", "ORB"]
 
     for algo in algorithms:
         print(f"\n正在提取{algo}特征...")
