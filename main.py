@@ -444,9 +444,9 @@ class ImageRetrievalUI(QMainWindow):
         text += f"当前精确率: {self.precision.text()}\n"
         text += f"当前mAP@10: {self.map.text()}\n"
         text += f"响应时间: {self.response_time.text()}\n"
-        text += f"\n=== 特征编码信息 ===\n"
-        text += f"编码方法: {self.encoding_method.currentText()}\n"
-        text += f"聚类数量: {self.cluster_num.value()}"
+        # text += f"\n=== 特征编码信息 ===\n"
+        # text += f"编码方法: {self.encoding_method.currentText()}\n"
+        # text += f"聚类数量: {self.cluster_num.value()}"
 
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
