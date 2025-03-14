@@ -25,6 +25,7 @@ class FeatureExtractor:
 
         self.features = {}
         self.kmeans = None
+        self.gmm = None
         self.vocabulary = None
 
     def _get_image_paths(self, root_dir):

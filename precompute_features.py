@@ -35,10 +35,14 @@ def main(algo=None, encoding=None, n_clusters=None):
 
                     # 生成特征和词汇表保存路径
                     save_path = config.FEATURE_PATTERN.format(
-                        algo=algo, encoding=encoding, clusters=n_clusters
+                        algo=current_algo,
+                        encoding=current_encoding,
+                        clusters=current_clusters,
                     )
                     vocab_path = config.VOCABULARY_PATTERN.format(
-                        algo=algo, encoding=encoding, clusters=n_clusters
+                        algo=current_algo,
+                        encoding=current_encoding,
+                        clusters=current_clusters,
                     )
 
                     # 提取并保存特征
@@ -46,13 +50,14 @@ def main(algo=None, encoding=None, n_clusters=None):
 
                     # 保存词汇表
                     with open(vocab_path, "wb") as f:
-                        pickle.dump(
-                            {
-                                "kmeans": extractor.kmeans,
-                                "centers": extractor.vocabulary,
-                            },
-                            f,
-                        )
+                        vocab_data = {
+                            "centers": extractor.vocabulary,
+                        }
+                        if current_encoding == "FV":
+                            vocab_data["gmm"] = extractor.gmm
+                        else:
+                            vocab_data["kmeans"] = extractor.kmeans
+                        pickle.dump(vocab_data, f)
 
                     print(f"{algo}+{encoding}特征已保存至: {save_path}")
                     print(f"词汇表已保存至: {vocab_path}")

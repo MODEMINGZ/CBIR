@@ -67,10 +67,13 @@ class RetrievalEngine:
         try:
             with open(vocabulary_path, "rb") as f:
                 vocabulary_data = pickle.load(f)
-                if self.encoding in ["BoF", "VLAD"]:
+                if self.encoding == "FV":
+                    # 对于Fisher Vector，需要加载GMM模型
+                    self.feature_extractor.gmm = vocabulary_data["gmm"]
+                else:
+                    # 对于BoF和VLAD，加载KMeans模型
                     self.feature_extractor.kmeans = vocabulary_data["kmeans"]
-                elif self.encoding == "FV":
-                    self.feature_extractor.gmm = vocabulary_data["kmeans"]
+                # 保存聚类中心
                 self.feature_extractor.vocabulary = vocabulary_data["centers"]
         except Exception as e:
             raise ValueError(f"加载词汇表失败: {str(e)}")
