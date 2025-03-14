@@ -9,68 +9,119 @@ from feature_extractor import FeatureExtractor
 from retrieval_engine import RetrievalEngine
 from metrics import MetricCalculator
 from config import config
+
+# 已在PRCanvas类中导入必要的matplotlib模块
+
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtCore import Qt
 
 
-class PRCanvas(FigureCanvas):
+class PRCanvas(QWidget):
     """PR曲线绘图组件"""
 
     def __init__(self, parent=None):
-        self.fig = Figure(figsize=(5, 4), dpi=80)
-        super().__init__(self.fig)
+        super().__init__(parent)
+        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_xlabel("Recall")
-        self.ax.set_ylabel("Precision")
-        self.ax.set_title("PR Curve")
+
+        # 添加导航工具栏
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        # 设置布局
+        layout = QVBoxLayout()
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+        self.setLayout(layout)
+
+        self.init_plot()
+
+    def init_plot(self):
+        self.ax.set_xlabel("Recall", fontsize=10)
+        self.ax.set_ylabel("Precision", fontsize=10)
+        self.ax.set_title("Precision-Recall Curve", fontsize=12)
         self.ax.set_xlim(0, 1)
         self.ax.set_ylim(0, 1)
         self.ax.grid(True, linestyle="--", alpha=0.7)
+        self.fig.tight_layout()
 
-    def update_plot(self, pr_data, interpolated_pr_data=None):
-        """根据数据更新曲线
-
-        Args:
-            pr_data: 原始PR数据点列表 [(recall, precision),...]
-            interpolated_pr_data: 11点插值后的PR数据 [(recall, precision),...]
-        """
+    def update_plot(self, pr_data, interpolated_pr_data=None, ap=None):
+        """根据数据更新曲线"""
         self.ax.clear()
+        self.init_plot()
+
         if len(pr_data) == 0:
             return
 
         # 绘制原始PR曲线
         recalls, precisions = zip(*pr_data)
-        self.ax.plot(
+        (original_line,) = self.ax.plot(
             recalls,
             precisions,
             "b-",
             marker="o",
-            markersize=3,
+            markersize=4,
             label="Original PR Curve",
-            alpha=0.6,
+            alpha=0.7,
         )
 
         # 绘制插值PR曲线
         if interpolated_pr_data and len(interpolated_pr_data) > 0:
             int_recalls, int_precisions = zip(*interpolated_pr_data)
-            self.ax.plot(
+            (interpolated_line,) = self.ax.plot(
                 int_recalls,
                 int_precisions,
                 "r--",
                 marker="s",
-                markersize=4,
+                markersize=5,
                 label="11-point Interpolation",
+                alpha=0.8,
             )
 
-        self.ax.set_xlabel("Recall")
-        self.ax.set_ylabel("Precision")
-        self.ax.set_title("PR Curve")
-        self.ax.set_xlim(0, 1)
-        self.ax.set_ylim(0, 1)
-        self.ax.grid(True, linestyle="--", alpha=0.7)
-        self.ax.legend()
-        self.fig.tight_layout()
-        self.draw()
+        # 添加平均精度信息
+        if ap is not None:
+            self.ax.text(
+                0.05,
+                0.05,
+                f"AP: {ap:.4f}",
+                transform=self.ax.transAxes,
+                fontsize=10,
+                verticalalignment="bottom",
+                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            )
+
+        # 设置图例
+        self.ax.legend(loc="lower left", fontsize=8)
+
+        # 添加数据标签
+        for i, (r, p) in enumerate(pr_data):
+            if i % 5 == 0:  # 每5个点添加一个标签
+                self.ax.annotate(
+                    f"({r:.2f}, {p:.2f})",
+                    (r, p),
+                    textcoords="offset points",
+                    xytext=(0, 5),
+                    ha="center",
+                    fontsize=7,
+                )
+
+        # 使用动画效果更新图表
+        self.canvas.draw_idle()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.NoButton:
+            # 获取鼠标位置对应的数据坐标
+            x, y = self.ax.transData.inverted().transform((event.x(), event.y()))
+            if 0 <= x <= 1 and 0 <= y <= 1:
+                # 在状态栏显示坐标信息
+                self.parent().parent().statusBar().showMessage(
+                    f"Recall: {x:.2f}, Precision: {y:.2f}"
+                )
+        super().mouseMoveEvent(event)
 
 
 # ======================== 多线程检索类 ========================
@@ -486,8 +537,12 @@ class ImageRetrievalUI(QMainWindow):
         self.precision.setText(f"{metrics['precision']*100:.1f}%")
         self.map.setText(f"{metrics['mAP']:.3f}")
         self.response_time.setText(f"{metrics['response_time']} ms")
+
+        # 更新PR曲线，传递AP值
         self.pr_canvas.update_plot(
-            metrics.get("pr_data", []), metrics.get("interpolated_pr_data", [])
+            metrics.get("pr_data", []),
+            metrics.get("interpolated_pr_data", []),
+            metrics.get("mAP"),
         )
 
     def analyze_test_set(self):

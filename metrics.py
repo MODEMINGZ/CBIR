@@ -89,14 +89,55 @@ class MetricCalculator:
             recall_k = relevant / total_relevant if total_relevant > 0 else 0
             pr_data.append((recall_k, precision_k))
 
+        # 计算11点插值PR曲线数据
+        interpolated_pr_data = self.calculate_interpolated_pr_curve(pr_data)
+
         return {
             "pr_data": pr_data,
+            "interpolated_pr_data": interpolated_pr_data,
             "recall": float(round(recall, 4)),
             "precision": float(round(precision, 4)),
             "mAP": float(round(map_score, 4)),
             "response_time": float(round(search_time, 1)),
             "total_relevant": total_relevant,
         }
+
+    def calculate_interpolated_pr_curve(self, pr_data):
+        """计算11点插值PR曲线
+
+        在11个标准召回率点(0, 0.1, 0.2, ..., 1.0)上计算插值精确率
+
+        Args:
+            pr_data: 原始PR数据点列表 [(recall, precision),...]
+
+        Returns:
+            list: 11点插值后的PR数据 [(recall, precision),...]
+        """
+        if not pr_data:
+            return []
+
+        # 标准11点召回率
+        standard_recalls = [i / 10 for i in range(11)]  # 0, 0.1, 0.2, ..., 1.0
+        interpolated_precisions = []
+
+        # 原始数据按召回率排序
+        sorted_pr_data = sorted(pr_data, key=lambda x: x[0])
+        recalls = [r for r, _ in sorted_pr_data]
+        precisions = [p for _, p in sorted_pr_data]
+
+        # 对每个标准召回率点，找到大于等于它的所有精确率的最大值
+        for recall in standard_recalls:
+            # 找到所有大于等于当前召回率的精确率
+            precision_at_recall = [p for r, p in sorted_pr_data if r >= recall]
+
+            # 如果没有找到，使用0
+            if not precision_at_recall:
+                interpolated_precisions.append(0)
+            else:
+                # 使用最大精确率
+                interpolated_precisions.append(max(precision_at_recall))
+
+        return list(zip(standard_recalls, interpolated_precisions))
 
 
 class TestSetEvaluator:
