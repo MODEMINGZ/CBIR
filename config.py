@@ -7,7 +7,7 @@ class Config:
     TEST_ROOT = os.path.join("data", "test")  # 测试集路径：data/test/
 
     # 特征保存路径
-    TEST_FEATURE_PATH = "test_features.pkl"  # 测试集特征（可选）
+    TEST_FEATURE_PATH = "test_features.pkl"
     FEATURE_PATTERN = os.path.join(
         "features", "features_{algo}_{encoding}_{clusters}.pkl"
     )

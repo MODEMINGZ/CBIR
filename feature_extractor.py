@@ -158,7 +158,7 @@ class FeatureExtractor:
             self.kmeans.fit(features)
             self.vocabulary = self.kmeans.cluster_centers_
         elif self.encoding == "FV":
-            # 对于FV，我们使用GMM而不是K-means
+            # 对于FV，使用GMM而不是K-means
             print("训练高斯混合模型...")
             # 如果特征数量太多，随机抽样以加速训练
             if features.shape[0] > 100000:

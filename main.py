@@ -130,12 +130,11 @@ class SearchThread(QThread):
         list, list, float, dict
     )  # 信号：结果路径、相似度、耗时、指标
 
-    def __init__(self, engine, metric_calculator, query_path, query_feature, k):
+    def __init__(self, engine, metric_calculator, query_path, k):
         super().__init__()
         self.engine = engine
         self.metric_calculator = metric_calculator
         self.query_path = query_path
-        self.query_feature = query_feature
         self.k = k
 
     def run(self):
@@ -143,7 +142,7 @@ class SearchThread(QThread):
         try:
             # 执行检索
             result_paths, similarities, search_time = self.engine.search(
-                self.query_feature, self.k
+                self.query_path, self.k
             )
 
             # 计算性能指标
@@ -416,17 +415,10 @@ class ImageRetrievalUI(QMainWindow):
             # 加载特征
             encoding = self.encoding_method.currentText()
             n_clusters = self.cluster_num.value()
-            self.feature_extractor = FeatureExtractor(
-                algo=algo, encoding=encoding, n_clusters=n_clusters
-            )
-            # 加载词汇表和特征
-            with open(vocabulary_path, "rb") as f:
-                vocabulary_data = pickle.load(f)
-                self.feature_extractor.kmeans = vocabulary_data["kmeans"]
-                self.feature_extractor.vocabulary = vocabulary_data["centers"]
-            self.feature_extractor.load_features(feature_path)
             # 更新检索引擎
-            self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
+            self.retrieval_engine = RetrievalEngine(
+                feature_path, algo=algo, encoding=encoding, n_clusters=n_clusters
+            )
             return True
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载特征失败: {str(e)}")
@@ -503,20 +495,9 @@ class ImageRetrievalUI(QMainWindow):
         if not self.ensure_algorithm_support(algo):
             return
 
-        # 提取特征
-        try:
-            query_feature = self.feature_extractor.extract_single(
-                self.current_image_path
-            )
-            if query_feature is None:
-                raise ValueError("无法提取该图片特征")
-        except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
-            return
-
         # 禁用按钮防止重复点击
-        self.search_btn.setEnabled(False)
         self.search_btn.setText("检索中...")
+        self.search_btn.setEnabled(False)
 
         # 更新算法显示
         self.current_algorithm.setText(self.feature_algo.currentText())
@@ -526,7 +507,6 @@ class ImageRetrievalUI(QMainWindow):
             self.retrieval_engine,
             self.metric_calculator,
             self.current_image_path,
-            query_feature,
             self.result_num.value(),
         )
         self.thread.search_finished.connect(self.on_search_finished)
