@@ -1,4 +1,3 @@
-# main.py
 import sys
 import os
 import numpy as np
@@ -9,6 +8,7 @@ from feature_extractor import FeatureExtractor
 from retrieval_engine import RetrievalEngine
 from metrics import MetricCalculator
 from config import config
+import pickle
 
 # 已在PRCanvas类中导入必要的matplotlib模块
 
@@ -224,8 +224,18 @@ class ImageRetrievalUI(QMainWindow):
         self.feature_algo = QComboBox()
         self.feature_algo.addItems(["SIFT", "ORB"])
 
+        self.encoding_method = QComboBox()
+        self.encoding_method.addItems(config.ENCODING_METHODS)
+
+        self.cluster_num = QSpinBox()
+        self.cluster_num.setRange(100, 5000)
+        self.cluster_num.setValue(config.DEFAULT_CLUSTERS)
+        self.cluster_num.setSingleStep(100)
+
         settings_layout.addRow("返回数量:", self.result_num)
         settings_layout.addRow("特征算法:", self.feature_algo)
+        settings_layout.addRow("编码方法:", self.encoding_method)
+        settings_layout.addRow("聚类数量:", self.cluster_num)
         settings_group.setLayout(settings_layout)
 
         # 检索按钮
@@ -299,7 +309,7 @@ class ImageRetrievalUI(QMainWindow):
         # 检索性能区
         perf_layout.addRow("召回率:", self.recall)
         perf_layout.addRow("精确率:", self.precision)
-        perf_layout.addRow("mAP:", self.map)
+        perf_layout.addRow("mAP@10:", self.map)
         perf_layout.addRow("响应时间:", self.response_time)
         self.performance_group.setLayout(perf_layout)
 
@@ -355,11 +365,21 @@ class ImageRetrievalUI(QMainWindow):
         self.feature_extractor = None
         self.retrieval_engine = None
 
+        # 连接编码方法变更信号
+        self.encoding_method.currentIndexChanged.connect(self.on_encoding_changed)
+
     def ensure_algorithm_support(self, algo):
         """确保算法支持并加载特征"""
-        feature_path = config.FEATURE_PATTERN.format(algo=algo)
+        encoding = self.encoding_method.currentText()
+        n_clusters = self.cluster_num.value()
+        feature_path = config.FEATURE_PATTERN.format(
+            algo=algo, encoding=encoding, clusters=n_clusters
+        )
+        vocabulary_path = config.VOCABULARY_PATTERN.format(
+            algo=algo, encoding=encoding, clusters=n_clusters
+        )
 
-        if not os.path.exists(feature_path):
+        if not os.path.exists(feature_path) or not os.path.exists(vocabulary_path):
             reply = QMessageBox.question(
                 self,
                 "特征文件缺失",
@@ -371,7 +391,19 @@ class ImageRetrievalUI(QMainWindow):
                 from subprocess import run
 
                 try:
-                    run(["python", "precompute_features.py"], check=True)
+                    run(
+                        [
+                            "python",
+                            "precompute_features.py",
+                            "--algo",
+                            algo,
+                            "--encoding",
+                            encoding,
+                            "--clusters",
+                            str(n_clusters),
+                        ],
+                        check=True,
+                    )
                     if not os.path.exists(feature_path):
                         raise FileNotFoundError(f"生成{algo}特征失败")
                 except Exception as e:
@@ -382,7 +414,16 @@ class ImageRetrievalUI(QMainWindow):
 
         try:
             # 加载特征
-            self.feature_extractor = FeatureExtractor(algo=algo)
+            encoding = self.encoding_method.currentText()
+            n_clusters = self.cluster_num.value()
+            self.feature_extractor = FeatureExtractor(
+                algo=algo, encoding=encoding, n_clusters=n_clusters
+            )
+            # 加载词汇表和特征
+            with open(vocabulary_path, "rb") as f:
+                vocabulary_data = pickle.load(f)
+                self.feature_extractor.kmeans = vocabulary_data["kmeans"]
+                self.feature_extractor.vocabulary = vocabulary_data["centers"]
             self.feature_extractor.load_features(feature_path)
             # 更新检索引擎
             self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
@@ -396,6 +437,8 @@ class ImageRetrievalUI(QMainWindow):
         """复制完整的性能报告"""
         text = f"=== 检索性能报告 ===\n"
         text += f"算法类型: {self.feature_algo.currentText()}\n"
+        text += f"编码方法: {self.encoding_method.currentText()}\n"
+        text += f"聚类数量: {self.cluster_num.value()}\n"
         text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n\n"
 
         text += f"=== 测试集统计 ===\n"
@@ -408,7 +451,10 @@ class ImageRetrievalUI(QMainWindow):
         text += f"当前召回率: {self.recall.text()}\n"
         text += f"当前精确率: {self.precision.text()}\n"
         text += f"当前mAP@10: {self.map.text()}\n"
-        text += f"响应时间: {self.response_time.text()}"
+        text += f"响应时间: {self.response_time.text()}\n"
+        text += f"\n=== 特征编码信息 ===\n"
+        text += f"编码方法: {self.encoding_method.currentText()}\n"
+        text += f"聚类数量: {self.cluster_num.value()}"
 
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
@@ -418,8 +464,15 @@ class ImageRetrievalUI(QMainWindow):
         """算法切换事件处理"""
         # 算法切换时不立即加载特征，而是更新显示
         algo = self.feature_algo.currentText()
-        self.current_algorithm.setText(algo)
-        self.statusBar().showMessage(f"已切换到{algo}算法", 3000)
+        encoding = self.encoding_method.currentText()
+        n_clusters = self.cluster_num.value()
+        self.current_algorithm.setText(f"{algo} + {encoding}({n_clusters})")
+        self.statusBar().showMessage(f"已切换到{algo}算法，使用{encoding}编码", 3000)
+
+    def on_encoding_changed(self):
+        """编码方法切换事件处理"""
+        encoding = self.encoding_method.currentText()
+        self.statusBar().showMessage(f"已切换到{encoding}编码方法", 3000)
 
     def upload_image(self):
         """上传图片并显示预览"""
