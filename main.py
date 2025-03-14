@@ -124,6 +124,7 @@ class ImageRetrievalUI(QMainWindow):
         self.upload_btn.clicked.connect(self.upload_image)
         self.feature_algo.currentIndexChanged.connect(self.on_algorithm_changed)
         self.copy_btn.clicked.connect(self.copy_metrics)
+        self.analyze_btn.clicked.connect(self.analyze_test_set)
 
     # ----------------- 初始化方法 -----------------
     def init_ui(self):
@@ -181,10 +182,16 @@ class ImageRetrievalUI(QMainWindow):
         self.search_btn.setFixedHeight(40)
         self.search_btn.setStyleSheet("background-color: #4CAF50; color: white;")
 
+        # 统计测试集按钮
+        self.analyze_btn = QPushButton("统计测试集")
+        self.analyze_btn.setFixedHeight(30)
+        self.analyze_btn.setStyleSheet("background-color: #2196F3; color: white;")
+
         left_layout.addWidget(self.image_preview)
         left_layout.addWidget(self.upload_btn)
         left_layout.addWidget(settings_group)
         left_layout.addWidget(self.search_btn)
+        left_layout.addWidget(self.analyze_btn)
 
         # 中间结果展示
         mid_panel = QScrollArea()
@@ -215,6 +222,11 @@ class ImageRetrievalUI(QMainWindow):
         self.current_query.setWordWrap(True)
         self.total_relevant = QLabel("---")
 
+        # 测试集统计
+        self.test_total_images = QLabel("---")
+        self.test_total_classes = QLabel("---")
+        self.test_avg_per_class = QLabel("---")
+
         # 核心指标
         self.recall = QLabel("---")
         self.precision = QLabel("---")
@@ -226,6 +238,14 @@ class ImageRetrievalUI(QMainWindow):
         perf_layout.addRow("查询图片:", self.current_query)
         perf_layout.addRow("总相关数:", self.total_relevant)
         perf_layout.addRow(QLabel(""))  # 空行分隔
+
+        # 测试集统计区
+        perf_layout.addRow("测试集总图片:", self.test_total_images)
+        perf_layout.addRow("测试集类别数:", self.test_total_classes)
+        perf_layout.addRow("平均每类图片:", self.test_avg_per_class)
+        perf_layout.addRow(QLabel(""))  # 空行分隔
+
+        # 检索性能区
         perf_layout.addRow("召回率:", self.recall)
         perf_layout.addRow("精确率:", self.precision)
         perf_layout.addRow("mAP:", self.map)
@@ -277,32 +297,62 @@ class ImageRetrievalUI(QMainWindow):
 
     def init_backend(self):
         """初始化特征提取器、检索引擎和指标计算器"""
-        try:
-            # 加载特征数据
-            self.feature_extractor = FeatureExtractor()
-            self.feature_extractor.load_features(
-                config.FEATURE_PATTERN.format(algo="SIFT")
-            )
+        # 初始化性能计算器
+        self.metric_calculator = MetricCalculator(config.DATASET_ROOT)
 
-            # 初始化检索引擎
-            self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
+        # 初始化特征提取器（延迟到实际使用时）
+        self.feature_extractor = None
+        self.retrieval_engine = None
 
-            # 初始化性能计算器
-            self.metric_calculator = MetricCalculator(config.DATASET_ROOT)
-        except FileNotFoundError:
-            QMessageBox.critical(
+    def ensure_algorithm_support(self, algo):
+        """确保算法支持并加载特征"""
+        feature_path = config.FEATURE_PATTERN.format(algo=algo)
+
+        if not os.path.exists(feature_path):
+            reply = QMessageBox.question(
                 self,
-                "错误",
-                "未找到特征文件，请先运行precompute_features.py生成特征数据！",
+                "特征文件缺失",
+                f"未找到{algo}算法的特征文件，是否现在生成？",
+                QMessageBox.Yes | QMessageBox.No,
             )
-            sys.exit(1)
+
+            if reply == QMessageBox.Yes:
+                from subprocess import run
+
+                try:
+                    run(["python", "precompute_features.py"], check=True)
+                    if not os.path.exists(feature_path):
+                        raise FileNotFoundError(f"生成{algo}特征失败")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"特征生成失败: {str(e)}")
+                    return False
+            else:
+                return False
+
+        try:
+            # 加载特征
+            self.feature_extractor = FeatureExtractor(algo=algo)
+            self.feature_extractor.load_features(feature_path)
+            # 更新检索引擎
+            self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
+            return True
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载特征失败: {str(e)}")
+            return False
 
     # ----------------- 核心逻辑 -----------------
     def copy_metrics(self):
         """复制完整的性能报告"""
         text = f"=== 检索性能报告 ===\n"
         text += f"算法类型: {self.feature_algo.currentText()}\n"
-        text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n"
+        text += f"查询图片: {os.path.basename(self.current_image_path) if self.current_image_path else '未知'}\n\n"
+
+        text += f"=== 测试集统计 ===\n"
+        text += f"测试集总图片: {self.test_total_images.text()}\n"
+        text += f"测试集类别数: {self.test_total_classes.text()}\n"
+        text += f"平均每类图片: {self.test_avg_per_class.text()}\n\n"
+
+        text += f"=== 检索性能 ===\n"
         text += f"总相关图片: {self.metric_calculator.total_relevant}\n"
         text += f"当前召回率: {self.recall.text()}\n"
         text += f"当前精确率: {self.precision.text()}\n"
@@ -315,33 +365,10 @@ class ImageRetrievalUI(QMainWindow):
 
     def on_algorithm_changed(self):
         """算法切换事件处理"""
+        # 算法切换时不立即加载特征，而是更新显示
         algo = self.feature_algo.currentText()
-
-        try:
-            # 动态生成特征文件路径
-            feature_path = config.FEATURE_PATTERN.format(algo=algo)
-
-            # 加载特征
-            self.feature_extractor = FeatureExtractor(algo=algo)
-            self.feature_extractor.load_features(feature_path)
-
-            # 更新检索引擎
-            self.retrieval_engine = RetrievalEngine(self.feature_extractor.features)
-
-            # 更新界面显示
-            self.statusBar().showMessage(f"已切换到{algo}算法", 3000)
-
-        except FileNotFoundError:
-            QMessageBox.critical(
-                self,
-                "错误",
-                f"未找到{algo}算法的特征文件！\n请先运行precompute_features.py生成",
-            )
-            # 回退到默认算法
-            self.feature_algo.blockSignals(True)  # 防止递归触发
-            self.feature_algo.setCurrentText("SIFT")
-            self.feature_algo.blockSignals(False)
-            self.on_algorithm_changed()  # 强制刷新
+        self.current_algorithm.setText(algo)
+        self.statusBar().showMessage(f"已切换到{algo}算法", 3000)
 
     def upload_image(self):
         """上传图片并显示预览"""
@@ -365,6 +392,11 @@ class ImageRetrievalUI(QMainWindow):
         """点击检索按钮的槽函数"""
         if not self.current_image_path:
             QMessageBox.warning(self, "提示", "请先上传查询图片！")
+            return
+
+        # 确保当前算法可用
+        algo = self.feature_algo.currentText()
+        if not self.ensure_algorithm_support(algo):
             return
 
         # 提取特征
@@ -454,7 +486,46 @@ class ImageRetrievalUI(QMainWindow):
         self.precision.setText(f"{metrics['precision']*100:.1f}%")
         self.map.setText(f"{metrics['mAP']:.3f}")
         self.response_time.setText(f"{metrics['response_time']} ms")
-        self.pr_canvas.update_plot(metrics.get("pr_data", []))
+        self.pr_canvas.update_plot(
+            metrics.get("pr_data", []), metrics.get("interpolated_pr_data", [])
+        )
+
+    def analyze_test_set(self):
+        """统计测试集信息"""
+        test_dir = config.TEST_ROOT
+        total_images = 0
+        class_counts = {}
+
+        for root, _, files in os.walk(test_dir):
+            class_name = os.path.basename(root)
+            if class_name == os.path.basename(test_dir):
+                continue  # 跳过根目录
+
+            image_count = sum(
+                1 for f in files if f.lower().endswith(tuple(config.ALLOWED_EXTENSIONS))
+            )
+            if image_count > 0:
+                class_counts[class_name] = image_count
+                total_images += image_count
+
+        total_classes = len(class_counts)
+        avg_per_class = total_images / total_classes if total_classes > 0 else 0
+
+        # 更新UI
+        self.test_total_images.setText(str(total_images))
+        self.test_total_classes.setText(str(total_classes))
+        self.test_avg_per_class.setText(f"{avg_per_class:.2f}")
+
+        # 显示详细统计信息
+        details = "\n".join([f"{cls}: {count}" for cls, count in class_counts.items()])
+        QMessageBox.information(
+            self,
+            "测试集统计",
+            f"总图片数: {total_images}\n"
+            f"总类别数: {total_classes}\n"
+            f"平均每类图片数: {avg_per_class:.2f}\n\n"
+            f"各类别详细统计:\n{details}",
+        )
 
 
 # ======================== 启动程序 ========================
@@ -462,58 +533,6 @@ if __name__ == "__main__":
     # 高DPI适配
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
-
-    # 检查特征文件是否存在
-    from config import config
-    from feature_extractor import FeatureExtractor
-
-    # 获取所有支持的算法
-    supported_algos = ["SIFT", "ORB"]  # 与precompute_features.py中的algorithms一致
-
-    # 检查所有算法的特征文件是否存在
-    missing_algos = []
-    for algo in supported_algos:
-        feature_path = config.FEATURE_PATTERN.format(algo=algo)
-        if not os.path.exists(feature_path):
-            missing_algos.append(algo)
-
-    # 如果有缺失的特征文件
-    if missing_algos:
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Question)
-        msg.setWindowTitle("特征文件缺失")
-        msg.setText(
-            f"以下算法的特征文件未找到：{', '.join(missing_algos)}\n"
-            "是否需要现在生成？\n"
-        )
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        reply = msg.exec_()
-
-        if reply == QMessageBox.Yes:
-            # 执行特征预生成
-            from subprocess import run
-
-            try:
-                # 调用预计算脚本（显示控制台窗口）
-                run(["python", "precompute_features.py"], check=True)
-
-                # 再次验证是否生成成功
-                for algo in missing_algos:
-                    path = config.FEATURE_PATTERN.format(algo=algo)
-                    if not os.path.exists(path):
-                        QMessageBox.critical(
-                            None, "错误", f"生成{algo}特征失败！请检查控制台输出"
-                        )
-                        sys.exit(1)
-            except Exception as e:
-                QMessageBox.critical(
-                    None,
-                    "运行错误",
-                    f"特征生成失败：{str(e)}\n请手动运行precompute_features.py",
-                )
-                sys.exit(1)
-        else:
-            sys.exit(0)
 
     # 启动主窗口
     window = ImageRetrievalUI()

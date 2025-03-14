@@ -72,7 +72,10 @@ class MetricCalculator:
         relevant = sum(
             1 for path in results if self._get_class_from_path(path) == query_class
         )
+
+        # recall = 返回的正确结果数 / 该类别的总图片数
         recall = relevant / total_relevant if total_relevant > 0 else 0
+        # precision = 正确结果数 / 返回结果总数
         precision = relevant / len(results) if results else 0
 
         # 收集PR曲线数据
