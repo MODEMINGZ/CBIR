@@ -3,6 +3,7 @@ from sklearn.neighbors import NearestNeighbors
 import time
 import pickle
 from feature_extractor import FeatureExtractor
+from indexer import TFIDFIndexer
 from config import config
 
 
@@ -24,7 +25,7 @@ class RetrievalEngine:
 
         # 加载特征数据
         self._load_features(features_path)
-        self._build_index()
+        self._load_tfidf_index()
 
     def _load_features(self, features_path):
         """
@@ -46,10 +47,13 @@ class RetrievalEngine:
         self.img_paths = list(features.keys())
         self.feature_matrix = np.array(list(features.values()))
 
-    def _build_index(self):
-        """构建KNN索引（首次检索时自动触发）"""
-        self.nn = NearestNeighbors(n_neighbors=100, metric="cosine")
-        self.nn.fit(self.feature_matrix)
+    def _load_tfidf_index(self):
+        """加载TF-IDF索引"""
+        index_path = config.TFIDF_INDEX_PATTERN.format(
+            algo=self.algo, encoding=self.encoding, clusters=self.n_clusters
+        )
+        self.tfidf_indexer = TFIDFIndexer(n_clusters=self.n_clusters)
+        self.tfidf_indexer.load(index_path)
 
     def _load_vocabulary(self):
         """加载词汇表和初始化特征提取器"""
@@ -105,19 +109,14 @@ class RetrievalEngine:
         # 提取并编码查询图像特征
         try:
             query_feature = self.encode_query_image(query_path)
-            # 转换为二维数组
-            query_feature = np.array(query_feature).reshape(1, -1)
         except Exception as e:
             raise ValueError(f"提取编码查询图像特征失败: {str(e)}")
 
-        # 搜索最近邻
-        distances, indices = self.nn.kneighbors(query_feature, n_neighbors=k)
+        # 使用TF-IDF索引进行搜索
+        results = self.tfidf_indexer.search(query_feature, top_k=k)
 
-        # 计算相似度（余弦相似度 = 1 - 余弦距离）
-        # 注意：PyQt 信号要求传输的数据必须是 Python 原生类型（如 list）
-        similarities = (1 - distances[0]).tolist()
-
-        # 获取路径
-        result_paths = [self.img_paths[i] for i in indices[0]]
+        # 解析结果
+        result_paths = [path for path, _ in results]
+        similarities = [score for _, score in results]
 
         return result_paths, similarities, (time.time() - start_time) * 1000

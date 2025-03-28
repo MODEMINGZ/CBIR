@@ -14,6 +14,9 @@ class Config:
     VOCABULARY_PATTERN = os.path.join(
         "features", "vocabulary_{algo}_{encoding}_{clusters}.pkl"
     )
+    TFIDF_INDEX_PATTERN = os.path.join(
+        "features", "tfidf_index_{algo}_{encoding}_{clusters}"
+    )
 
     # 特征编码配置
     DEFAULT_CLUSTERS = 1000  # 默认聚类数量

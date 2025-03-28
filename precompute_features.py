@@ -1,4 +1,5 @@
 from feature_extractor import FeatureExtractor
+from indexer import TFIDFIndexer
 from config import config
 import os
 import pickle
@@ -61,6 +62,19 @@ def main(algo=None, encoding=None, n_clusters=None):
 
                     print(f"{algo}+{encoding}特征已保存至: {save_path}")
                     print(f"词汇表已保存至: {vocab_path}")
+
+                    # 构建TF-IDF索引
+                    indexer = TFIDFIndexer(n_clusters=current_clusters)
+                    indexer.build_index(extractor.features, extractor.kmeans)
+
+                    # 保存TF-IDF索引
+                    index_save_path = config.TFIDF_INDEX_PATTERN.format(
+                        algo=current_algo,
+                        encoding=current_encoding,
+                        clusters=current_clusters,
+                    )
+                    indexer.save(index_save_path)
+                    print(f"TF-IDF索引已保存至: {index_save_path}")
                 except Exception as e:
                     print(f"{algo}特征提取失败: {str(e)}")
 
